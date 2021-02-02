@@ -123,16 +123,27 @@ namespace FHIRBulkImport
                 retVal.Content = await resp.Content.ReadAsStringAsync();
                 retVal.Status = resp.StatusCode;
                 retVal.Success = resp.IsSuccessStatusCode;
-                if (!retVal.Success && string.IsNullOrEmpty(retVal.Content))
+                if (!retVal.Success)
                 {
-                    retVal.Content = resp.ReasonPhrase;
+                     if (string.IsNullOrEmpty(retVal.Content))
+                            retVal.Content = resp.ReasonPhrase;
+                     if (retVal.Status==System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        IEnumerable<string> values;
+                        resp.Headers.TryGetValues("x-ms-retry-after-ms", out values);
+                        string s_retry = Environment.GetEnvironmentVariable("FBI-DEFAULTRETRY");
+                        if (s_retry == null) s_retry = "500";
+                        var s = values.First();
+                        if (s == null) s = s_retry;
+                        int i = 0;
+                        if (!int.TryParse(s, out i))
+                        {
+                            i = 500;
+                        }
+                        retVal.RetryAfterMS = i;
+                    }
                 }
-                IEnumerable<string> values;
-                if (resp.Headers.TryGetValues("x-ms-retry-after-ms", out values))
-                {
-                    var s = values.First();
-                    log.LogInformation($"x-ms Header:{s}");
-                }
+               
             }
             return retVal;
         }
@@ -141,9 +152,11 @@ namespace FHIRBulkImport
             Status = System.Net.HttpStatusCode.InternalServerError;
             Success = false;
             Content = null;
+            RetryAfterMS = 500;
         }
         public string Content { get; set; }
         public System.Net.HttpStatusCode Status {get;set;}
         public bool Success { get; set; }
+        public int RetryAfterMS { get; set; }
     }
 }
