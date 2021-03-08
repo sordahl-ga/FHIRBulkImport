@@ -125,9 +125,9 @@ namespace FHIRBulkImport
                 retVal.Success = resp.IsSuccessStatusCode;
                 if (!retVal.Success)
                 {
-                     if (string.IsNullOrEmpty(retVal.Content))
+                    if (string.IsNullOrEmpty(retVal.Content))
                             retVal.Content = resp.ReasonPhrase;
-                     if (retVal.Status==System.Net.HttpStatusCode.TooManyRequests)
+                    if (retVal.Status==System.Net.HttpStatusCode.TooManyRequests)
                     {
                         IEnumerable<string> values;
                         resp.Headers.TryGetValues("x-ms-retry-after-ms", out values);
