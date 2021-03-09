@@ -6,16 +6,18 @@ IFS=$'\n\t'
 # -o: prevents errors in a pipeline from being masked
 # IFS new value is less likely to cause confusing bugs when looping arrays or arguments (e.g. $@)
 #
-#FHIR Bulk Loader Setup --- Author Steve Ordahl Principal Architect Health Data Platform
+#FHIR Loader Setup --- Author Steve Ordahl Principal Architect Health Data Platform
 #
 
-usage() { echo "Usage: $0 -i <subscriptionId> -g <resourceGroupName> -l <resourceGroupLocation> -p <prefix> -k <keyvault> -x (use FHIR Proxy)" 1>&2; exit 1; }
+usage() { echo "Usage: $0 -i <subscriptionId> -g <resourceGroupName> -l <resourceGroupLocation> -p <prefix> -k <keyvault> -y (use FHIR Proxy)" 1>&2; exit 1; }
 
 function fail {
   echo $1 >&2
   exit 1
 }
-
+function kvuri {
+	echo "@Microsoft.KeyVault(SecretUri=https://"$kvname".vault.azure.net/secrets/"$@"/)"
+}
 function retry {
   local n=1
   local max=5
@@ -36,28 +38,27 @@ declare defsubscriptionId=""
 declare subscriptionId=""
 declare resourceGroupName=""
 declare resourceGroupLocation=""
+declare serviceplanSuffix="asp"
+declare faname="fload"$RANDOM
 declare deployprefix=""
 declare defdeployprefix=""
-declare bulkstorename=""
-declare hl7sbqueuename=""
-declare hl7storekey=""
-declare hl7sbconnection=""
-declare hl7convertername="hl7conv"
-declare hl7converterrg=""
-declare hl7convertkey=""
-declare hl7converterinstance=""
+declare storageAccountNameSuffix="store"$RANDOM
+declare storageConnectionString=""
+declare faresourceid=""
 declare stepresult=""
-declare fahost=""
 declare kvname=""
 declare kvexists=""
-declare fpclientid=""
-declare fptenantid=""
-declare fpsecret=""
+declare fahost=""
+declare fsclientid=""
+declare fstenantid=""
+declare fssecret=""
+declare fsresource=""
+declare fsurl=""
 declare fphost=""
-declare repurls=""
-declare useproxy"
-# Initialize parameters specified from command line
-while getopts ":i:g:n:l:p:x" arg; do
+declare fpclientid=""
+declare useproxy=""
+#Initialize parameters specified from command line
+while getopts ":i:g:n:l:p:y" arg; do
 	case "${arg}" in
 		p)
 			deployprefix=${OPTARG:0:14}
@@ -76,7 +77,7 @@ while getopts ":i:g:n:l:p:x" arg; do
 		k)
 			kvname=${OPTARG}
 			;;
-		x)
+		y)
 			useproxy="yes"
 			;;
 		esac
@@ -136,7 +137,7 @@ if [[ -z "$deployprefix" ]]; then
 	[[ "${deployprefix:?}" ]]
 fi
 if [[ -z "$kvname" ]]; then
-	echo "Enter keyvault name that contains FHIR Server configuration (e.g. FS- settings): "
+	echo "Enter keyvault that contains FHIR Server or Proxy configuration (e.g. FS- or FP-SC- settings): "
 	read kvname
 fi
 if [ -z "$subscriptionId" ] || [ -z "$resourceGroupName" ] || [ -z "$kvname" ]; then
@@ -169,59 +170,53 @@ if [ $(az group exists --name $resourceGroupName) = false ]; then
 else
 	echo "Using existing resource group..."
 fi
-
 #Start deployment
-echo "Starting HL72FHIR Workflow Platform deployment..."
+echo "Starting FHIR Loader deployment..."
 (
-		#Deploy HL7 FHIR Converter
-		hl7converterinstance=$deployprefix$hl7convertername$RANDOM
-		echo "Loading configuration settings from key vault "$kvname"..."
-		faname=$(az keyvault secret show --vault-name $kvname --name FP-HOST --query "value" --out tsv)
-		#Get and Parse HL7 Storage Account String
-		stepresult=$(az keyvault secret show --vault-name $kvname --name HL7ING-STORAGEACCT --query "value" --out tsv)
-		IFS=';' read -ra ADDR <<< $stepresult
-		for i in "${ADDR[@]}"; do
-			if [[ $i = AccountName* ]]
-			then
-			   hl7storename=${i/AccountName=/}
+		echo "Checking configuration settings in key vault "$kvname"..."
+		if [ -n "$useproxy" ]; then
+			fphost=$(az keyvault secret show --vault-name $kvname --name FP-HOST --query "value" --out tsv)
+			if [ -z "$fpclientid" ]; then
+					echo $kvname" does not appear to contain fhir proxy settings...Is the Proxy Installed?"
+					exit 1
 			fi
-			if [[ $i = AccountKey* ]]
-			then
-			   hl7storekey=${i/AccountKey=/}
+			fsurl="https://"$fphost"/api/fhirproxy"
+		else
+			fsurl=$(az keyvault secret show --vault-name $kvname --name FS-URL --query "value" --out tsv)
+			if [ -z "$fsurl" ]; then
+					echo $kvname" does not appear to contain fhir server settings...FS-"
+					exit 1
 			fi
-		done
-		IFS=$'\n\t'
-		hl7sbconnection=$(az keyvault secret show --vault-name $kvname --name HL7ING-SERVICEBUS-CONNECTION --query "value" --out tsv)
-		hl7sbqueuename=$(az keyvault secret show --vault-name $kvname --name HL7ING-QUEUENAME --query "value" --out tsv)
-		fpclientid=$(az keyvault secret show --vault-name $kvname --name FP-RBAC-CLIENT-ID --query "value" --out tsv)
-		fptenantid=$(az keyvault secret show --vault-name $kvname --name FP-RBAC-TENANT-NAME --query "value" --out tsv)
-		fpsecret=$(az keyvault secret show --vault-name $kvname --name FP-RBAC-CLIENT-SECRET --query "value" --out tsv)
-		fphost=$(az keyvault secret show --vault-name $kvname --name FP-HOST --query "value" --out tsv)
-		repurls="https://"$fphost"/.auth/login/aad/callback https://logic-apis-"$resourceGroupLocation".consent.azure-apim.net/redirect"
-		echo "Deploying FHIR Converter ["$hl7converterinstance"] to resource group ["$hl7converterrg"]..."
-		stepresult=$(az deployment group create -g $hl7converterrg --template-uri https://raw.githubusercontent.com/microsoft/FHIR-Converter/master/deploy/default-azuredeploy.json --parameters serviceName=$hl7converterinstance)
-		hl7convertkey=$(az functionapp config appsettings list --resource-group $hl7converterrg --name $hl7converterinstance --query "[?name == 'CONVERSION_API_KEYS'].value" --out tsv)
-		echo "Deploying Custom Logic App Connector for FHIR Server Proxy..."
-		stepresult=$(az deployment group create -g $resourceGroupName --template-file hl7tofhir/LogicAppCustomConnectors/fhir_server_connect_template.json  --parameters fhirserverproxyhost=$faname fhirserverproxyclientid=$fpclientid fhirserverproxytenantid=$fptenantid fhirserverproxyclientsecret=$fpsecret)
-		echo "Deploying Custom Logic App Connector for FHIR Converter..."
-		stepresult=$(az deployment group create -g $resourceGroupName --template-file hl7tofhir/LogicAppCustomConnectors/fhir_converter_connect_template.json --parameters fhirconverterhost=$hl7converterinstance".azurewebsites.net")
-		echo "Deploying HL72FHIR Logic App..."
-		stepresult=$(az deployment group create -g $resourceGroupName --template-file hl7tofhir/hl72fhir.json  --parameters HL7FHIRConverter_1_api_key=$hl7convertkey azureblob_1_accountName=$hl7storename azureblob_1_accessKey=$hl7storekey servicebus_1_connectionString=$hl7sbconnection servicebus_1_queue=$hl7sbqueuename)
-		set +e
-		echo "Updating callback URLs for FHIR Proxy SP from Logic App..."
-		stepresult=$(az ad app update --id $fpclientid --reply-urls $repurls)
+		fi
+		#Create Storage Account
+		echo "Creating Storage Account ["$deployprefix$storageAccountNameSuffix"]..."
+		stepresult=$(az storage account create --name $deployprefix$storageAccountNameSuffix --resource-group $resourceGroupName --location  $resourceGroupLocation --sku Standard_LRS --encryption-services blob)
+		echo "Retrieving Storage Account Connection String..."
+		storageConnectionString=$(az storage account show-connection-string -g $resourceGroupName -n $deployprefix$storageAccountNameSuffix --query "connectionString" --out tsv)
+		stepresult=$(az keyvault secret set --vault-name $kvname --name "FBI-STORAGEACCT" --value $storageConnectionString)
+		#Create Service Plan
+		echo "Creating FHIR Loader Function App Serviceplan ["$deployprefix$serviceplanSuffix"]..."
+		stepresult=$(az appservice plan create -g  $resourceGroupName -n $deployprefix$serviceplanSuffix --number-of-workers 2 --sku B1)
+		#Create the function app
+		echo "Creating FHIR Loader Function App ["$faname"]..."
+		fahost=$(az functionapp create --name $faname --storage-account $deployprefix$storageAccountNameSuffix  --plan $deployprefix$serviceplanSuffix  --resource-group $resourceGroupName --runtime dotnet --os-type Windows --functions-version 3 --query defaultHostName --output tsv)
+		echo "Retrieving FHIR Loader Function App Host Key..."
+		faresourceid="/subscriptions/"$subscriptionId"/resourceGroups/"$resourceGroupName"/providers/Microsoft.Web/sites/"$faname
+		fakey=$(retry az rest --method post --uri "https://management.azure.com"$faresourceid"/host/default/listKeys?api-version=2018-02-01" --query "functionKeys.default" --output tsv)
+		echo "Configuring FHIR Loader App ["$faname"]..."
+		if [ -n "$useproxy" ]; then
+			stepresult=$(az functionapp config appsettings set --name $faname --resource-group $resourceGroupName --settings FBI-STORAGEACCT=$(kvuri FBI-STORAGEACCT) FS-URL=$fsurl FP-TENANT-NAME=$(kvuri FP-SC-TENANT-NAME) FS-CLIENT-ID=$(kvuri FP-SC-CLIENT-ID) FS-SECRET=$(kvuri FP-SC-SECRET) FS-RESOURCE=$(kvuri FP-SC-RESOURCE))
+		else
+			stepresult=$(az functionapp config appsettings set --name $faname --resource-group $resourceGroupName --settings FBI-STORAGEACCT=$(kvuri FBI-STORAGEACCT) FS-URL=$fsurl FS-TENANT-NAME=$(kvuri FS-TENANT-NAME) FS-CLIENT-ID=$(kvuri FS-CLIENT-ID) FS-SECRET=$(kvuri FS-SECRET) FS-RESOURCE=$(kvuri FS-RESOURCE))
+		fi
+		echo "Deploying FHIR Loader App from source repo to ["$fahost"]..."
+		stepresult=$(retry az functionapp deployment source config --branch master --manual-integration --name $faname --repo-url https://github.com/sordahl-ga/FHIRBulkImport --resource-group $resourceGroupName)
 		echo " "
 		echo "************************************************************************************************************"
-		echo "HL72FHIR Workflow Platform has successfully been deployed to group "$resourceGroupName" on "$(date)
+		echo "FHIR Loader has successfully been deployed to group "$resourceGroupName" on "$(date)
 		echo "Please note the following reference information for future use:"
-		echo "Your HL7 FHIR Converter Host is: "$hl7converterinstance
-		echo "Your HL7 FHIR Converter Key is: "$hl7convertkey
-		echo "Your HL7 FHIR Converter Resource Group is: "$hl7converterrg
+		echo "Your FHIRLoader URL is: "$fahost
+		echo "Your FHIRLoader Function App Key is: "$fakey
 		echo "************************************************************************************************************"
 		echo " "
 )
-	
-if [ $?  == 0 ];
- then
-	echo "HL72FHIR Workflow Platform has successfully been deployed"
-fi
