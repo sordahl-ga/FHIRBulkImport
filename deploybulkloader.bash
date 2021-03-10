@@ -44,10 +44,12 @@ declare deployprefix=""
 declare defdeployprefix=""
 declare storageAccountNameSuffix="store"$RANDOM
 declare storageConnectionString=""
+declare storesourceid=""
 declare faresourceid=""
 declare stepresult=""
 declare kvname=""
 declare kvexists=""
+declare msi=""
 declare fahost=""
 declare fsclientid=""
 declare fstenantid=""
@@ -57,6 +59,8 @@ declare fsurl=""
 declare fphost=""
 declare fpclientid=""
 declare useproxy=""
+declare egndjsonresource=""
+declare egbundleresource=""
 #Initialize parameters specified from command line
 while getopts ":i:g:n:l:p:y" arg; do
 	case "${arg}" in
@@ -83,7 +87,7 @@ while getopts ":i:g:n:l:p:y" arg; do
 		esac
 done
 shift $((OPTIND-1))
-echo "Executing "$0"..."
+echo "Deploying FHIR Bulk Loader..."
 echo "Checking Azure Authentication..."
 #login to azure using your credentials
 az account show 1> /dev/null
@@ -194,12 +198,19 @@ echo "Starting FHIR Loader deployment..."
 		echo "Retrieving Storage Account Connection String..."
 		storageConnectionString=$(az storage account show-connection-string -g $resourceGroupName -n $deployprefix$storageAccountNameSuffix --query "connectionString" --out tsv)
 		stepresult=$(az keyvault secret set --vault-name $kvname --name "FBI-STORAGEACCT" --value $storageConnectionString)
+		echo "Creating import containers..."
+		stepresult=$(az storage container create -n bundles --connection-string $storageConnectionString)
+		stepresult=$(az storage container create -n ndjson --connection-string $storageConnectionString)
 		#Create Service Plan
 		echo "Creating FHIR Loader Function App Serviceplan ["$deployprefix$serviceplanSuffix"]..."
 		stepresult=$(az appservice plan create -g  $resourceGroupName -n $deployprefix$serviceplanSuffix --number-of-workers 2 --sku B1)
 		#Create the function app
 		echo "Creating FHIR Loader Function App ["$faname"]..."
 		fahost=$(az functionapp create --name $faname --storage-account $deployprefix$storageAccountNameSuffix  --plan $deployprefix$serviceplanSuffix  --resource-group $resourceGroupName --runtime dotnet --os-type Windows --functions-version 3 --query defaultHostName --output tsv)
+		echo "Creating MSI for FHIR Loader Function App..."
+		msi=$(az functionapp identity assign -g $resourceGroupName -n $faname --query "principalId" --out tsv)
+		echo "Setting KeyVault Policy to allow secret access for FHIR Loader App..."
+		stepresult=$(az keyvault set-policy -n $kvname --secret-permissions list get set --object-id $msi)
 		echo "Retrieving FHIR Loader Function App Host Key..."
 		faresourceid="/subscriptions/"$subscriptionId"/resourceGroups/"$resourceGroupName"/providers/Microsoft.Web/sites/"$faname
 		fakey=$(retry az rest --method post --uri "https://management.azure.com"$faresourceid"/host/default/listKeys?api-version=2018-02-01" --query "functionKeys.default" --output tsv)
@@ -211,12 +222,19 @@ echo "Starting FHIR Loader deployment..."
 		fi
 		echo "Deploying FHIR Loader App from source repo to ["$fahost"]..."
 		stepresult=$(retry az functionapp deployment source config --branch master --manual-integration --name $faname --repo-url https://github.com/sordahl-ga/FHIRBulkImport --resource-group $resourceGroupName)
+		echo "Creating Azure Event GridSubscriptions..."
+		storesourceid="/subscriptions/"$subscriptionId"/resourceGroups/"$resourceGroupName"/providers/Microsoft.Storage/storageAccounts/"$deployprefix$storageAccountNameSuffix
+		egndjsonresource=$faresourceid"/functions/NDJSONConverter"
+		egbundleresource=$faresourceid"/functions/ImportFHIRBundles"
+		stepresult=$(az eventgrid event-subscription create --name ndjsoncreated --source-resource-id $storesourceid --endpoint $egndjsonresource --endpoint-type azurefunction  --subject-ends-with .ndjson --advanced-filter data.api stringin CopyBlob PutBlob PutBlockList FlushWithClose) 
+		stepresult=$(az eventgrid event-subscription create --name bundlecreated --source-resource-id $storesourceid --endpoint $egbundleresource --endpoint-type azurefunction  --subject-ends-with .json --advanced-filter data.api stringin CopyBlob PutBlob PutBlockList FlushWithClose) 
 		echo " "
 		echo "************************************************************************************************************"
 		echo "FHIR Loader has successfully been deployed to group "$resourceGroupName" on "$(date)
 		echo "Please note the following reference information for future use:"
 		echo "Your FHIRLoader URL is: "$fahost
 		echo "Your FHIRLoader Function App Key is: "$fakey
+		echo "Your FHIRLoader Storage Account name is: "$deployprefix$storageAccountNameSuffix
 		echo "************************************************************************************************************"
 		echo " "
 )
