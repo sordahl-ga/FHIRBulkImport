@@ -155,7 +155,7 @@ az account set --subscription $subscriptionId
 echo "Checking for keyvault "$kvname"..."
 kvexists=$(az keyvault list --query "[?name == '$kvname'].name" --out tsv)
 if [[ -z "$kvexists" ]]; then
-	echo "Cannot Locate Key Vault "$kvname" this deployment requires access to a keyvault with FHIR Server configuration settings...Consider installing the FHIR Proxy."
+	echo "Cannot Locate Key Vault "$kvname" this deployment requires access to a keyvault with FHIR Server configuration settings...Consider installing the FHIR Proxy or API4FHIRStarter Project"
 	exit 1
 fi
 
@@ -174,13 +174,14 @@ if [ $(az group exists --name $resourceGroupName) = false ]; then
 else
 	echo "Using existing resource group..."
 fi
+set -e
 #Start deployment
 echo "Starting FHIR Loader deployment..."
 (
 		echo "Checking configuration settings in key vault "$kvname"..."
 		if [ -n "$useproxy" ]; then
 			fphost=$(az keyvault secret show --vault-name $kvname --name FP-HOST --query "value" --out tsv)
-			if [ -z "$fpclientid" ]; then
+			if [ -z "$f" ]; then
 					echo $kvname" does not appear to contain fhir proxy settings...Is the Proxy Installed?"
 					exit 1
 			fi

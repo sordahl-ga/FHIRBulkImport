@@ -8,7 +8,20 @@ FHIR Event Processor is an Azure Function App solution that provides the followi
 # Architecture Overview
 ![Bulk Loader](bulkloadarch.png)
 
-## Deploying your own FHIR Bulk Loader
+# Prerequsites
+1. The following resources providers must be registered in your subscription and you must have the ability to create/update them:
+   + ResourceGroup, KeyVault, Storage Account, App Service Plan, Function App, EventGrid
+2. You must have the policy assigned to read/write KeyVault Secrets in the speicified keyvault.
+
+# Deployment
+1. [Open Azure Cloud Shell](https://shell.azure.com) you can also access this from [Azure Portal](https://portal.azure.com)
+2. Select Bash Shell for the environment 
+3. Clone this repo ```git clone https://github.com/sordahl-ga/FHIRBulkImport```
+4. Execute ```deploybulkloader.bash``` for direct FHIR Server access or ```deploybulkloader.bash -y``` to use FHIR Proxy access
+5. Follow prompts.
+
+# Importing FHIR Data
+
 
 # Contributing
 
