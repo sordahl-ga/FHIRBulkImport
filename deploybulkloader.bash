@@ -185,7 +185,7 @@ echo "Starting FHIR Loader deployment..."
 					echo $kvname" does not appear to contain fhir proxy settings...Is the Proxy Installed?"
 					exit 1
 			fi
-			fsurl="https://"$fphost"/api/fhirproxy"
+			fsurl="https://"$fphost"/fhir"
 		else
 			fsurl=$(az keyvault secret show --vault-name $kvname --name FS-URL --query "value" --out tsv)
 			if [ -z "$fsurl" ]; then
@@ -217,7 +217,7 @@ echo "Starting FHIR Loader deployment..."
 		fakey=$(retry az rest --method post --uri "https://management.azure.com"$faresourceid"/host/default/listKeys?api-version=2018-02-01" --query "functionKeys.default" --output tsv)
 		echo "Configuring FHIR Loader App ["$faname"]..."
 		if [ -n "$useproxy" ]; then
-			stepresult=$(az functionapp config appsettings set --name $faname --resource-group $resourceGroupName --settings FBI-STORAGEACCT=$(kvuri FBI-STORAGEACCT) FS-URL=$fsurl FP-TENANT-NAME=$(kvuri FP-SC-TENANT-NAME) FS-CLIENT-ID=$(kvuri FP-SC-CLIENT-ID) FS-SECRET=$(kvuri FP-SC-SECRET) FS-RESOURCE=$(kvuri FP-SC-RESOURCE))
+			stepresult=$(az functionapp config appsettings set --name $faname --resource-group $resourceGroupName --settings FBI-STORAGEACCT=$(kvuri FBI-STORAGEACCT) FS-URL=$fsurl FS-TENANT-NAME=$(kvuri FP-SC-TENANT-NAME) FS-CLIENT-ID=$(kvuri FP-SC-CLIENT-ID) FS-SECRET=$(kvuri FP-SC-SECRET) FS-RESOURCE=$(kvuri FP-SC-RESOURCE))
 		else
 			stepresult=$(az functionapp config appsettings set --name $faname --resource-group $resourceGroupName --settings FBI-STORAGEACCT=$(kvuri FBI-STORAGEACCT) FS-URL=$fsurl FS-TENANT-NAME=$(kvuri FS-TENANT-NAME) FS-CLIENT-ID=$(kvuri FS-CLIENT-ID) FS-SECRET=$(kvuri FS-SECRET) FS-RESOURCE=$(kvuri FS-RESOURCE))
 		fi
