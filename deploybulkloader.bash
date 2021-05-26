@@ -181,7 +181,7 @@ echo "Starting FHIR Loader deployment..."
 		echo "Checking configuration settings in key vault "$kvname"..."
 		if [ -n "$useproxy" ]; then
 			fphost=$(az keyvault secret show --vault-name $kvname --name FP-HOST --query "value" --out tsv)
-			if [ -z "$f" ]; then
+			if [ -z "$kvname" ]; then
 					echo $kvname" does not appear to contain fhir proxy settings...Is the Proxy Installed?"
 					exit 1
 			fi
