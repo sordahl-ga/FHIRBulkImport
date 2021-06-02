@@ -181,7 +181,7 @@ echo "Starting FHIR Loader deployment..."
 		echo "Checking configuration settings in key vault "$kvname"..."
 		if [ -n "$useproxy" ]; then
 			fphost=$(az keyvault secret show --vault-name $kvname --name FP-HOST --query "value" --out tsv)
-			if [ -z "$kvname" ]; then
+			if [ -z "$fphost" ]; then
 					echo $kvname" does not appear to contain fhir proxy settings...Is the Proxy Installed?"
 					exit 1
 			fi
@@ -189,7 +189,7 @@ echo "Starting FHIR Loader deployment..."
 		else
 			fsurl=$(az keyvault secret show --vault-name $kvname --name FS-URL --query "value" --out tsv)
 			if [ -z "$fsurl" ]; then
-					echo $kvname" does not appear to contain fhir server settings...FS-"
+					echo $kvname" does not appear to contain fhir server settings...FS-URL"
 					exit 1
 			fi
 		fi
