@@ -110,7 +110,7 @@ namespace FHIRBulkImport
 
                     if (convert.TryGetValue(s, out t))
                     {
-                        item.Replace(convert[s] + "/" + s);
+                        item.Replace(t + "/" + s);
                     }
                 }
                 log.LogInformation($"TransformBundleProcess: Complete.");
