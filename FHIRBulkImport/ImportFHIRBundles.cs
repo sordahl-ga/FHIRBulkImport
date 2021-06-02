@@ -101,7 +101,7 @@ namespace FHIRBulkImport
                             int rc = 200;
                             if (int.TryParse(s, out rc))
                             {
-                                
+
                                 if (rc < 200 || rc > 299)
                                 {
 
@@ -118,7 +118,7 @@ namespace FHIRBulkImport
                                         JArray ja = (JArray)retVal["errors"];
                                         ja.Add(errcontainer);
                                     }
-                                }                                  
+                                }
                             }
                         }
                         ec++;
@@ -134,7 +134,10 @@ namespace FHIRBulkImport
                         log.LogError($"ImportFHIRBundles: {jac.Count} errors detected in response entries for {name}");
                     }
                 }
-                log.LogError($"ImportFHIRBundles: Cannot detect resource entries in response for {name}");
+                else
+                {
+                    log.LogWarning($"ImportFHIRBundles: Cannot detect resource entries in source/response for {name}");
+                }
                 return retVal;
             }
             catch (Exception e)

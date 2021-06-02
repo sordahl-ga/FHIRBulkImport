@@ -108,6 +108,7 @@ namespace FHIRBulkImport
                     string f = "urn:uuid:" + id1;
                     str = str.Replace(f, r1);
                 }
+                log.LogInformation($"TransformBundleProcess: Complete.");
                 return str;
             }
             return requestBody;
