@@ -101,15 +101,15 @@ namespace FHIRBulkImport
 
                 }
                 log.LogInformation($"TransformBundleProcess: Phase 2 Localizing {convert.Count} resource entries...");
-                string str = result.ToString();
+                StringBuilder str = new StringBuilder(result.ToString());
                 foreach (string id1 in convert.Keys)
                 {
                     string r1 = convert[id1] + "/" + id1;
                     string f = "urn:uuid:" + id1;
-                    str = str.Replace(f, r1);
+                    str.Replace(f, r1);
                 }
                 log.LogInformation($"TransformBundleProcess: Complete.");
-                return str;
+                return str.ToString();
             }
             return requestBody;
         }
