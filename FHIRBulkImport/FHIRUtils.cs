@@ -14,7 +14,14 @@ namespace FHIRBulkImport
     {
         private static object lockobj = new object();
         private static string _bearerToken = null;
+        private static SocketsHttpHandler socketsHandler = new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(Utils.GetIntEnvironmentVariable("FBI-POOLEDCON-LIFETIME", "5")),
+            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(Utils.GetIntEnvironmentVariable("FBI-POOLEDCON-IDLETO", "2")),
+            MaxConnectionsPerServer = Utils.GetIntEnvironmentVariable("FBI-POOLEDCON-MAXCONNECTIONS", "10")
+        };
 
+        private static HttpClient _fhirClient = new HttpClient(socketsHandler);
         public static async System.Threading.Tasks.Task<FHIRResponse> CallFHIRServer(string path, string body, HttpMethod method, ILogger log)
         {
             if (!string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("FS-RESOURCE")) && ADUtils.isTokenExpired(_bearerToken))
@@ -29,8 +36,7 @@ namespace FHIRBulkImport
                     }
                 }
             }
-            using (HttpClient _fhirClient = new HttpClient())
-            {
+           
                 HttpRequestMessage _fhirRequest;
                 HttpResponseMessage _fhirResponse;
                 var fhirurl = $"{Environment.GetEnvironmentVariable("FS-URL")}/{path}";
@@ -40,7 +46,7 @@ namespace FHIRBulkImport
                 _fhirRequest.Content = new StringContent(body, Encoding.UTF8, "application/json");
                 _fhirResponse = await _fhirClient.SendAsync(_fhirRequest);
                 return await FHIRResponse.FromHttpResponseMessage(_fhirResponse,log);
-            }
+            
 
         }
         public static string TransformBundle(string requestBody, ILogger log)
