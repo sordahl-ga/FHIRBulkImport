@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Linq;
 using Polly;
+using System.Net;
 
 namespace FHIRBulkImport
 {
@@ -15,7 +16,14 @@ namespace FHIRBulkImport
     {
         private static object lockobj = new object();
         private static string _bearerToken = null;
-
+        private static readonly HttpStatusCode[] httpStatusCodesWorthRetrying = {
+            HttpStatusCode.RequestTimeout, // 408
+            HttpStatusCode.InternalServerError, // 500
+            HttpStatusCode.BadGateway, // 502
+            HttpStatusCode.ServiceUnavailable, // 503
+            HttpStatusCode.GatewayTimeout, // 504
+            HttpStatusCode.TooManyRequests //429
+        };
 
         private static HttpClient _fhirClient = null;
         private static void InititalizeHttpClient(ILogger log)
@@ -50,20 +58,23 @@ namespace FHIRBulkImport
             }
             var retryPolicy = Policy
                 .Handle<HttpRequestException>()
+                .OrResult<HttpResponseMessage>(r => httpStatusCodesWorthRetrying.Contains(r.StatusCode))
                 .WaitAndRetryAsync(Utils.GetIntEnvironmentVariable("FBI-POLLY-MAXRETRIES","3"), retryAttempt =>
-                    TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))
+                    TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)), (result, timeSpan, retryCount, context) =>
+                    {
+                        log.LogWarning($"FHIR Request failed. Waiting {timeSpan} before next retry. Retry attempt {retryCount}");
+                    }
                 );
-            HttpResponseMessage _fhirResponse = null;
+            HttpResponseMessage _fhirResponse =
             await retryPolicy.ExecuteAsync(async () =>
             {
                 HttpRequestMessage _fhirRequest;
-                _fhirResponse = null;
                 var fhirurl = $"{Environment.GetEnvironmentVariable("FS-URL")}/{path}";
                 _fhirRequest = new HttpRequestMessage(method, fhirurl);
                 _fhirClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _bearerToken);
                 _fhirClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 _fhirRequest.Content = new StringContent(body, Encoding.UTF8, "application/json");
-                _fhirResponse = await _fhirClient.SendAsync(_fhirRequest);
+                return await _fhirClient.SendAsync(_fhirRequest);
                 
             });
             return await FHIRResponse.FromHttpResponseMessage(_fhirResponse, log);
