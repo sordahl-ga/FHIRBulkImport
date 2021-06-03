@@ -7,6 +7,7 @@ using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Linq;
+using Polly;
 
 namespace FHIRBulkImport
 {
@@ -14,40 +15,58 @@ namespace FHIRBulkImport
     {
         private static object lockobj = new object();
         private static string _bearerToken = null;
-        private static SocketsHttpHandler socketsHandler = new SocketsHttpHandler
-        {
-            PooledConnectionLifetime = TimeSpan.FromMinutes(Utils.GetIntEnvironmentVariable("FBI-POOLEDCON-LIFETIME", "5")),
-            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(Utils.GetIntEnvironmentVariable("FBI-POOLEDCON-IDLETO", "2")),
-            MaxConnectionsPerServer = Utils.GetIntEnvironmentVariable("FBI-POOLEDCON-MAXCONNECTIONS", "10")
-        };
 
-        private static HttpClient _fhirClient = new HttpClient(socketsHandler);
+
+        private static HttpClient _fhirClient = null;
+        private static void InititalizeHttpClient(ILogger log)
+        {
+            if (_fhirClient==null)
+            {
+                log.LogInformation("Initializing FHIR Client...");
+                SocketsHttpHandler socketsHandler = new SocketsHttpHandler
+                  {
+                      PooledConnectionLifetime = TimeSpan.FromMinutes(Utils.GetIntEnvironmentVariable("FBI-POOLEDCON-LIFETIME", "5")),
+                      PooledConnectionIdleTimeout = TimeSpan.FromMinutes(Utils.GetIntEnvironmentVariable("FBI-POOLEDCON-IDLETO", "2")),
+                      MaxConnectionsPerServer = Utils.GetIntEnvironmentVariable("FBI-POOLEDCON-MAXCONNECTIONS", "10")
+                  };
+                 _fhirClient = new HttpClient(socketsHandler);
+            }
+        }
         public static async System.Threading.Tasks.Task<FHIRResponse> CallFHIRServer(string path, string body, HttpMethod method, ILogger log)
         {
             if (!string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("FS-RESOURCE")) && ADUtils.isTokenExpired(_bearerToken))
             {
                 lock (lockobj)
                 {
+                    
                     if (ADUtils.isTokenExpired(_bearerToken))
                     {
-                        log.LogInformation("Token is expired...Obtaining new bearer token...");
+                        InititalizeHttpClient(log);
+                        log.LogInformation("Bearer Token is expired...Obtaining new bearer token...");
                         _bearerToken = ADUtils.GetOAUTH2BearerToken(System.Environment.GetEnvironmentVariable("FS-RESOURCE"), System.Environment.GetEnvironmentVariable("FS-TENANT-NAME"),
                                                                  System.Environment.GetEnvironmentVariable("FS-CLIENT-ID"), System.Environment.GetEnvironmentVariable("FS-SECRET")).GetAwaiter().GetResult();
                     }
                 }
             }
-           
+            var retryPolicy = Policy
+                .Handle<HttpRequestException>()
+                .WaitAndRetryAsync(Utils.GetIntEnvironmentVariable("FBI-POLLY-MAXRETRIES","3"), retryAttempt =>
+                    TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))
+                );
+            HttpResponseMessage _fhirResponse = null;
+            await retryPolicy.ExecuteAsync(async () =>
+            {
                 HttpRequestMessage _fhirRequest;
-                HttpResponseMessage _fhirResponse;
+                _fhirResponse = null;
                 var fhirurl = $"{Environment.GetEnvironmentVariable("FS-URL")}/{path}";
                 _fhirRequest = new HttpRequestMessage(method, fhirurl);
                 _fhirClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _bearerToken);
                 _fhirClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 _fhirRequest.Content = new StringContent(body, Encoding.UTF8, "application/json");
                 _fhirResponse = await _fhirClient.SendAsync(_fhirRequest);
-                return await FHIRResponse.FromHttpResponseMessage(_fhirResponse,log);
-            
-
+                
+            });
+            return await FHIRResponse.FromHttpResponseMessage(_fhirResponse, log);
         }
         public static string TransformBundle(string requestBody, ILogger log)
         {
