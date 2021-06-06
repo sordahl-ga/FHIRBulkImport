@@ -40,14 +40,23 @@ namespace FHIRBulkImport
                                 string validname = Regex.Replace(entry.Name, @"[^a-zA-Z0-9\-]", "-").ToLower();
                                 log.LogInformation($"ImportCompressedFiles: Now processing {entry.FullName} size {FormatSize(entry.Length)}");
                                 CloudBlobContainer destination = null;
-                                if (validname.ToLower().EndsWith("ndjson")) destination = containerndjson;
-                                else if (validname.ToLower().EndsWith("json")) destination = containerbundles;
+                                if (validname.ToLower().EndsWith("ndjson"))
+                                {
+                                    destination = containerndjson;
+                                    validname += ".ndjson";
+                                }
+                                else if (validname.ToLower().EndsWith("json"))
+                                {
+                                    destination = containerbundles;
+                                    validname += ".json";
+                                }
                                 if (destination != null)
                                 {
                                     CloudBlockBlob blockBlob = destination.GetBlockBlobReference(validname);
                                     using (var fileStream = entry.Open())
                                     {
                                         await blockBlob.UploadFromStreamAsync(fileStream);
+                                        
                                     }
                                     log.LogInformation($"ImportCompressedFiles: Extracted {entry.FullName} to {destination.Name}/{validname}");
                                 }
