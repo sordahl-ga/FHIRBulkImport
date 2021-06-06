@@ -59,6 +59,9 @@ namespace FHIRBulkImport
                                         
                                     }
                                     log.LogInformation($"ImportCompressedFiles: Extracted {entry.FullName} to {destination.Name}/{validname}");
+                                } else
+                                {
+                                    log.LogInformation($"ImportCompressedFiles: Entry {entry.FullName} skipped does not end in .ndjson or .json");
                                 }
                     
                             }
