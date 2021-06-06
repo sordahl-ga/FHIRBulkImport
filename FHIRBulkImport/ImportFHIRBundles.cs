@@ -1,15 +1,11 @@
 using System;
 using System.IO;
 using System.Net.Http;
-using System.Reflection.Metadata.Ecma335;
-using System.Runtime.Serialization;
 using System.Threading.Tasks;
 using Microsoft.Azure.EventGrid.Models;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.EventGrid;
-using Microsoft.Azure.WebJobs.Host;
 using Microsoft.Extensions.Logging;
-using Microsoft.VisualBasic.CompilerServices;
 using Newtonsoft.Json.Linq;
 
 namespace FHIRBulkImport
