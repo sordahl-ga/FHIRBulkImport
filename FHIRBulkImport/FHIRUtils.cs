@@ -72,8 +72,8 @@ namespace FHIRBulkImport
                 HttpRequestMessage _fhirRequest;
                 var fhirurl = $"{Environment.GetEnvironmentVariable("FS-URL")}/{path}";
                 _fhirRequest = new HttpRequestMessage(method, fhirurl);
-                _fhirClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _bearerToken);
-                _fhirClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                _fhirRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _bearerToken);
+                _fhirRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 _fhirRequest.Content = new StringContent(body, Encoding.UTF8, "application/json");
                 return await _fhirClient.SendAsync(_fhirRequest);
                 
