@@ -18,6 +18,7 @@ namespace FHIRBulkImport
         {
             try
             {
+                int filecnt = 0;
                 if (name.Split('.').Last().ToLower() == "zip")
                 {
 
@@ -59,15 +60,17 @@ namespace FHIRBulkImport
                                         
                                     }
                                     log.LogInformation($"ImportCompressedFiles: Extracted {entry.FullName} to {destination.Name}/{validname}");
+                                   
                                 } else
                                 {
                                     log.LogInformation($"ImportCompressedFiles: Entry {entry.FullName} skipped does not end in .ndjson or .json");
                                 }
-                    
+                                filecnt++;
                             }
                         }
+                           
                     }
-                    log.LogInformation($"ImportCompressedFiles: Complerted Decompressing {name} ...");
+                    log.LogInformation($"ImportCompressedFiles: Completed Decompressing {name} extracted {filecnt} files...");
                     await StorageUtils.MoveTo(blobClient, "zip", "zipprocessed", name, name,log);
                 }
             }

@@ -60,10 +60,10 @@ namespace FHIRBulkImport
             {
                 var nb = NDJSONConverter.initBundle();
                 nb["entry"] = result["throttled"];
-                string fn = $"{name}-{DateTime.Now.Ticks}.json.retry";
+                string fn = $"retry{Guid.NewGuid().ToString().Replace("-","")}.json";
                 await StorageUtils.MoveTo(cbclient, "bundles", "bundlesprocessed", name, $"{name}.processed", log);
                 await StorageUtils.WriteStringToBlob(cbclient, "bundlesprocessed", $"{name}.processed.result", fhirbundle.Content, log);
-                await StorageUtils.WriteStringToBlob(cbclient, "bundlesretry",fn, nb.ToString(), log);
+                await StorageUtils.WriteStringToBlob(cbclient, "bundles",fn, nb.ToString(), log);
                 log.LogInformation($"ImportFHIRBUndles File Name:{name} had throttled resources in response bundle. Moved to processed..Created retry bunde {fn}");
 
             }
